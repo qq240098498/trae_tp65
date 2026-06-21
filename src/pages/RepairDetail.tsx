@@ -16,6 +16,12 @@ import {
   Edit2,
   PenTool,
   Loader2,
+  AlertTriangle,
+  RefreshCw,
+  Search,
+  CheckCircle,
+  XCircle,
+  ArrowRight,
 } from 'lucide-react'
 import { useAppStore } from '../store'
 import {
@@ -23,10 +29,11 @@ import {
   statusLabels,
   type Repair,
   type RepairStatus,
+  type ImeiRecord,
 } from '../types'
 import Modal from '../components/Modal'
 import { cn } from '../lib/utils'
-import { repairApi } from '../lib/api'
+import { repairApi, imeiApi } from '../lib/api'
 
 interface SelectedService {
   repair_item_id: number
@@ -55,6 +62,8 @@ export default function RepairDetail() {
     addRepairServices,
     addRepairParts,
     updateRepairStatus,
+    markImeiMotherboard,
+    markImeiExchange,
   } = useAppStore()
 
   const [repair, setRepair] = useState<Repair | null>(null)
@@ -79,6 +88,137 @@ export default function RepairDetail() {
   const [isSavingServices, setIsSavingServices] = useState(false)
   const [isSavingParts, setIsSavingParts] = useState(false)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+
+  const [imeiCheckResult, setImeiCheckResult] = useState<{
+    hasMotherboardRepair: boolean
+    hasDeviceExchange: boolean
+    warnings: string[]
+    recordCount: number
+    lastRepair: ImeiRecord | null
+  } | null>(null)
+  const [isCheckingImei, setIsCheckingImei] = useState(false)
+  const [isMotherboardModalOpen, setIsMotherboardModalOpen] = useState(false)
+  const [isExchangeModalOpen, setIsExchangeModalOpen] = useState(false)
+  const [isImeiHistoryModalOpen, setIsImeiHistoryModalOpen] = useState(false)
+  const [imeiHistory, setImeiHistory] = useState<{
+    history: ImeiRecord[]
+    hasMotherboardRepair: boolean
+    hasDeviceExchange: boolean
+  } | null>(null)
+  const [currentImeiRecord, setCurrentImeiRecord] = useState<ImeiRecord | null>(null)
+  const [motherboardNotes, setMotherboardNotes] = useState('')
+  const [exchangeData, setExchangeData] = useState({ old_imei: '', new_imei: '', notes: '' })
+  const [isMarking, setIsMarking] = useState(false)
+
+  const checkImei = async (imei: string) => {
+    if (!imei.trim()) {
+      setImeiCheckResult(null)
+      return
+    }
+    setIsCheckingImei(true)
+    try {
+      const result = await imeiApi.check(imei.trim())
+      setImeiCheckResult(result)
+    } catch (error) {
+      console.error('IMEI检查失败:', error)
+      setImeiCheckResult(null)
+    } finally {
+      setIsCheckingImei(false)
+    }
+  }
+
+  const loadImeiHistory = async (imei: string) => {
+    if (!imei.trim()) return
+    try {
+      const history = await imeiApi.getHistory(imei.trim())
+      setImeiHistory(history)
+      setIsImeiHistoryModalOpen(true)
+    } catch (error) {
+      console.error('获取IMEI历史失败:', error)
+      alert(error instanceof Error ? error.message : '获取历史失败')
+    }
+  }
+
+  const findImeiRecord = async () => {
+    if (!repair?.imei || !id) return null
+    try {
+      const records = await imeiApi.list({ imei: repair.imei })
+      const matching = records.find((r) => r.repair_id === parseInt(id))
+      if (matching) {
+        setCurrentImeiRecord(matching)
+        return matching
+      }
+      if (records.length > 0) {
+        setCurrentImeiRecord(records[0])
+        return records[0]
+      }
+    } catch (error) {
+      console.error('查找IMEI记录失败:', error)
+    }
+    return null
+  }
+
+  const handleMarkMotherboard = async () => {
+    const record = currentImeiRecord || (await findImeiRecord())
+    if (!record) {
+      alert('未找到对应的IMEI记录，请先确保该维修单已登记IMEI')
+      return
+    }
+    setIsMarking(true)
+    try {
+      await markImeiMotherboard(record.id, motherboardNotes || undefined)
+      setIsMotherboardModalOpen(false)
+      setMotherboardNotes('')
+      if (repair?.imei) {
+        await checkImei(repair.imei)
+      }
+      alert('已标记主板维修')
+    } catch (error) {
+      console.error('标记失败:', error)
+      alert(error instanceof Error ? error.message : '标记失败')
+    } finally {
+      setIsMarking(false)
+    }
+  }
+
+  const handleMarkExchange = async () => {
+    const record = currentImeiRecord || (await findImeiRecord())
+    if (!record) {
+      alert('未找到对应的IMEI记录，请先确保该维修单已登记IMEI')
+      return
+    }
+    if (!exchangeData.old_imei.trim() || !exchangeData.new_imei.trim()) {
+      alert('请填写原IMEI和新IMEI')
+      return
+    }
+    setIsMarking(true)
+    try {
+      await markImeiExchange(
+        record.id,
+        exchangeData.old_imei.trim(),
+        exchangeData.new_imei.trim(),
+        exchangeData.notes.trim() || undefined
+      )
+      setIsExchangeModalOpen(false)
+      setExchangeData({ old_imei: '', new_imei: '', notes: '' })
+      if (repair?.imei) {
+        await checkImei(repair.imei)
+      }
+      alert('已标记换机并创建新IMEI记录')
+    } catch (error) {
+      console.error('标记失败:', error)
+      alert(error instanceof Error ? error.message : '标记失败')
+    } finally {
+      setIsMarking(false)
+    }
+  }
+
+  useEffect(() => {
+    if (repair?.imei) {
+      checkImei(repair.imei)
+      findImeiRecord()
+    }
+  }, [repair?.imei])
 
   useEffect(() => {
     fetchParts()
@@ -400,12 +540,116 @@ export default function RepairDetail() {
                   {repair.brand} {repair.model}
                 </span>
               </div>
-              {repair.imei && (
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-500">IMEI</span>
-                  <span className="font-medium text-gray-900 font-mono">
-                    {repair.imei}
-                  </span>
+              {repair.imei ? (
+                <div className="py-2 border-b border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-gray-500">IMEI</span>
+                    <div className="flex items-center gap-2">
+                      {isCheckingImei ? (
+                        <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                      ) : imeiCheckResult?.warnings?.length ? (
+                        <AlertTriangle className="w-4 h-4 text-red-500" />
+                      ) : imeiCheckResult && imeiCheckResult.recordCount > 0 ? (
+                        <Search className="w-4 h-4 text-yellow-500" />
+                      ) : imeiCheckResult ? (
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                      ) : null}
+                      <span className="font-medium text-gray-900 font-mono">
+                        {repair.imei}
+                      </span>
+                    </div>
+                  </div>
+
+                  {imeiCheckResult && (
+                    <div className="mt-3 space-y-2">
+                      {imeiCheckResult.warnings?.length > 0 ? (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-red-800">风险提示</div>
+                              <ul className="mt-1 space-y-1">
+                                {imeiCheckResult.warnings.map((warning, index) => (
+                                  <li key={index} className="text-xs text-red-700">• {warning}</li>
+                                ))}
+                              </ul>
+                              <button
+                                onClick={() => loadImeiHistory(repair.imei!)}
+                                className="mt-2 text-xs text-red-600 hover:text-red-800 underline flex items-center gap-1"
+                              >
+                                <Search className="w-3 h-3" />
+                                查看详细维修历史
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : imeiCheckResult.recordCount > 0 ? (
+                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <Search className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-yellow-800">
+                                该IMEI有 {imeiCheckResult.recordCount} 条维修记录
+                              </div>
+                              <button
+                                onClick={() => loadImeiHistory(repair.imei!)}
+                                className="mt-1 text-xs text-yellow-600 hover:text-yellow-800 underline flex items-center gap-1"
+                              >
+                                <Search className="w-3 h-3" />
+                                查看维修历史
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <CheckCircle className="w-3 h-3 text-green-500" />
+                          <span>该IMEI暂无维修记录</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => loadImeiHistory(repair.imei!)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                    >
+                      <Search size={14} />
+                      查看历史
+                    </button>
+                    {(!imeiCheckResult || imeiCheckResult.hasMotherboardRepair === false) && (
+                      <button
+                        onClick={() => {
+                          setMotherboardNotes('')
+                          setIsMotherboardModalOpen(true)
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                      >
+                        <AlertTriangle size={14} />
+                        标记主板维修
+                      </button>
+                    )}
+                    {(!imeiCheckResult || imeiCheckResult.hasDeviceExchange === false) && (
+                      <button
+                        onClick={() => {
+                          setExchangeData({ old_imei: repair.imei || '', new_imei: '', notes: '' })
+                          setIsExchangeModalOpen(true)
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-orange-600 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors"
+                      >
+                        <RefreshCw size={14} />
+                        标记换机
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="py-2 border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">IMEI</span>
+                    <span className="text-sm text-gray-400">未登记</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -952,6 +1196,229 @@ export default function RepairDetail() {
             className="max-w-full max-h-[70vh] object-contain"
           />
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={isMotherboardModalOpen}
+        onClose={() => setIsMotherboardModalOpen(false)}
+        title="标记主板维修"
+        size="md"
+        footer={
+          <>
+            <button
+              onClick={() => setIsMotherboardModalOpen(false)}
+              className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleMarkMotherboard}
+              disabled={isMarking}
+              className="px-6 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isMarking ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              {isMarking ? '标记中...' : '确认标记'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="font-medium text-red-800">重要提示</div>
+                <div className="text-sm text-red-700 mt-1">
+                  标记主板维修后，该IMEI将永久记录此信息。后续接机时系统会自动提示，防止赃物和掉包纠纷。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {repair && (
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="text-sm text-gray-500">IMEI</div>
+              <div className="font-mono font-semibold text-gray-900 mt-1">{repair.imei}</div>
+              <div className="text-sm text-gray-500 mt-2">设备</div>
+              <div className="font-medium text-gray-900 mt-1">
+                {repair.brand} {repair.model}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">备注说明</label>
+            <textarea
+              value={motherboardNotes}
+              onChange={(e) => setMotherboardNotes(e.target.value)}
+              rows={3}
+              placeholder="描述主板维修情况、更换部件等信息"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100 resize-none"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isExchangeModalOpen}
+        onClose={() => setIsExchangeModalOpen(false)}
+        title="标记换机"
+        size="md"
+        footer={
+          <>
+            <button
+              onClick={() => setIsExchangeModalOpen(false)}
+              className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleMarkExchange}
+              disabled={isMarking}
+              className="px-6 py-2 text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isMarking ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              {isMarking ? '标记中...' : '确认换机'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="font-medium text-orange-800">重要提示</div>
+                <div className="text-sm text-orange-700 mt-1">
+                  标记换机后，系统将同时更新原IMEI记录并创建新IMEI记录。两个IMEI都会关联换机信息，防止后续纠纷。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              原IMEI <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={exchangeData.old_imei}
+              onChange={(e) => setExchangeData({ ...exchangeData, old_imei: e.target.value })}
+              placeholder="原设备IMEI"
+              className="w-full rounded-lg border border-orange-300 px-4 py-2.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+            />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                新IMEI <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={exchangeData.new_imei}
+                onChange={(e) => setExchangeData({ ...exchangeData, new_imei: e.target.value })}
+                placeholder="新设备IMEI"
+                className="w-full rounded-lg border border-orange-300 px-4 py-2.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">换机原因</label>
+            <textarea
+              value={exchangeData.notes}
+              onChange={(e) => setExchangeData({ ...exchangeData, notes: e.target.value })}
+              rows={3}
+              placeholder="描述换机原因、新旧设备差异等信息"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100 resize-none"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isImeiHistoryModalOpen}
+        onClose={() => setIsImeiHistoryModalOpen(false)}
+        title="IMEI维修历史"
+        size="xl"
+      >
+        {imeiHistory && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-3">
+              <div className={cn(
+                'flex items-center gap-2 px-4 py-2 rounded-lg',
+                imeiHistory.hasMotherboardRepair ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+              )}>
+                {imeiHistory.hasMotherboardRepair ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
+                <span className="text-sm font-medium">主板维修: {imeiHistory.hasMotherboardRepair ? '有' : '无'}</span>
+              </div>
+              <div className={cn(
+                'flex items-center gap-2 px-4 py-2 rounded-lg',
+                imeiHistory.hasDeviceExchange ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'
+              )}>
+                {imeiHistory.hasDeviceExchange ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
+                <span className="text-sm font-medium">换机记录: {imeiHistory.hasDeviceExchange ? '有' : '无'}</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg">
+                <span className="text-sm font-medium">记录总数: {imeiHistory.history.length}</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {imeiHistory.history.map((record) => (
+                <div key={record.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-mono text-sm font-semibold text-gray-900">
+                        {record.imei}
+                      </div>
+                      <div className="text-sm text-gray-600 mt-1">
+                        {record.brand} {record.model}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {record.is_motherboard_repaired === 1 && (
+                        <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-full">
+                          主板维修
+                        </span>
+                      )}
+                      {record.is_device_exchanged === 1 && (
+                        <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
+                          换机
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {record.old_imei && (
+                    <div className="mt-2 text-xs text-gray-500 flex items-center gap-1">
+                      <span className="line-through">{record.old_imei}</span>
+                      <ArrowRight size={12} />
+                      <span>{record.new_imei}</span>
+                    </div>
+                  )}
+                  {record.repair && (
+                    <div className="mt-2 pt-2 border-t border-gray-200">
+                      <div className="text-xs text-gray-500">
+                        客户: {record.repair.customer_name} ({record.repair.customer_phone})
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        故障: {record.repair.fault_description}
+                      </div>
+                    </div>
+                  )}
+                  {record.notes && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      备注: {record.notes}
+                    </div>
+                  )}
+                  <div className="mt-2 text-xs text-gray-400">
+                    {new Date(record.created_at).toLocaleString('zh-CN')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

@@ -141,6 +141,29 @@ export interface RepairStats {
   todayRevenue: number
 }
 
+export interface ImeiRecord {
+  id: number
+  imei: string
+  brand: string
+  model: string
+  repair_id: number | null
+  is_motherboard_repaired: number
+  is_device_exchanged: number
+  old_imei: string | null
+  new_imei: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+  repair?: {
+    id: number
+    customer_name: string
+    customer_phone: string
+    fault_description: string
+    status: string
+    created_at: string
+  }
+}
+
 export interface ApiResponse<T> {
   success: boolean
   data?: T

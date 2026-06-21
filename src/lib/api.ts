@@ -5,6 +5,7 @@ import type {
   Part,
   ApiResponse,
   RepairStatus,
+  ImeiRecord,
 } from '../types'
 
 const API_BASE = '/api'
@@ -155,6 +156,89 @@ export const repairItemApi = {
 
   delete: (id: number) =>
     request<void>(`/repair-items/${id}`, {
+      method: 'DELETE',
+    }),
+}
+
+export const imeiApi = {
+  list: (params?: { imei?: string; keyword?: string }) => {
+    const query = params
+      ? '?' +
+        new URLSearchParams(
+          Object.entries(params).filter(([, v]) => v) as [string, string][]
+        ).toString()
+      : ''
+    return request<ImeiRecord[]>(`/imei${query}`)
+  },
+
+  getHistory: (imei: string) =>
+    request<{
+      history: ImeiRecord[]
+      hasMotherboardRepair: boolean
+      hasDeviceExchange: boolean
+    }>(`/imei/history/${encodeURIComponent(imei)}`),
+
+  check: (imei: string) =>
+    request<{
+      imei: string
+      hasMotherboardRepair: boolean
+      hasDeviceExchange: boolean
+      warnings: string[]
+      recordCount: number
+      lastRepair: ImeiRecord | null
+    }>(`/imei/check/${encodeURIComponent(imei)}`),
+
+  get: (id: number) => request<ImeiRecord>(`/imei/${id}`),
+
+  create: (data: {
+    imei: string
+    brand: string
+    model: string
+    repair_id?: number
+    is_motherboard_repaired?: boolean
+    is_device_exchanged?: boolean
+    old_imei?: string
+    new_imei?: string
+    notes?: string
+  }) =>
+    request<ImeiRecord>('/imei', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (
+    id: number,
+    data: {
+      imei?: string
+      brand?: string
+      model?: string
+      repair_id?: number
+      is_motherboard_repaired?: boolean
+      is_device_exchanged?: boolean
+      old_imei?: string
+      new_imei?: string
+      notes?: string
+    }
+  ) =>
+    request<ImeiRecord>(`/imei/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  markMotherboard: (id: number, notes?: string) =>
+    request<ImeiRecord>(`/imei/${id}/mark-motherboard`, {
+      method: 'POST',
+      body: JSON.stringify({ notes }),
+    }),
+
+  markExchange: (id: number, old_imei: string, new_imei: string, notes?: string) =>
+    request<ImeiRecord>(`/imei/${id}/mark-exchange`, {
+      method: 'POST',
+      body: JSON.stringify({ old_imei, new_imei, notes }),
+    }),
+
+  delete: (id: number) =>
+    request<void>(`/imei/${id}`, {
       method: 'DELETE',
     }),
 }

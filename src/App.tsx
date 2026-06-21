@@ -6,6 +6,7 @@ import RepairList from './pages/RepairList'
 import Pickup from './pages/Pickup'
 import Inventory from './pages/Inventory'
 import RepairDetail from './pages/RepairDetail'
+import ImeiRecords from './pages/ImeiRecords'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/repairs/:id" element={<RepairDetail />} />
           <Route path="/checkin" element={<Checkin />} />
           <Route path="/inventory" element={<Inventory />} />
+          <Route path="/imei" element={<ImeiRecords />} />
         </Route>
       </Routes>
     </Router>

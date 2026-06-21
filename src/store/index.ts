@@ -1,11 +1,12 @@
 import { create } from 'zustand'
-import type { Repair, Part, RepairItem, RepairStats, RepairStatus } from '../types'
-import { repairApi, partApi, repairItemApi } from '../lib/api'
+import type { Repair, Part, RepairItem, RepairStats, RepairStatus, ImeiRecord } from '../types'
+import { repairApi, partApi, repairItemApi, imeiApi } from '../lib/api'
 
 interface AppState {
   repairs: Repair[]
   parts: Part[]
   repairItems: RepairItem[]
+  imeiRecords: ImeiRecord[]
   stats: RepairStats | null
   loading: boolean
   error: string | null
@@ -19,6 +20,7 @@ interface AppState {
     keyword?: string
   }) => Promise<void>
   fetchRepairItems: () => Promise<void>
+  fetchImeiRecords: (params?: { imei?: string; keyword?: string }) => Promise<void>
 
   createRepair: typeof repairApi.create
   updateRepairStatus: typeof repairApi.updateStatus
@@ -32,6 +34,12 @@ interface AppState {
   updatePartStock: typeof partApi.updateStock
   deletePart: typeof partApi.delete
 
+  createImeiRecord: typeof imeiApi.create
+  updateImeiRecord: typeof imeiApi.update
+  markImeiMotherboard: typeof imeiApi.markMotherboard
+  markImeiExchange: typeof imeiApi.markExchange
+  deleteImeiRecord: typeof imeiApi.delete
+
   setError: (error: string | null) => void
 }
 
@@ -39,6 +47,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   repairs: [],
   parts: [],
   repairItems: [],
+  imeiRecords: [],
   stats: null,
   loading: false,
   error: null,
@@ -141,6 +150,47 @@ export const useAppStore = create<AppState>((set, get) => ({
   deletePart: async (id) => {
     await partApi.delete(id)
     await get().fetchParts()
+  },
+
+  fetchImeiRecords: async (params) => {
+    try {
+      set({ loading: true, error: null })
+      const records = await imeiApi.list(params)
+      set({ imeiRecords: records })
+    } catch (error) {
+      set({ error: (error as Error).message })
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  createImeiRecord: async (data) => {
+    const result = await imeiApi.create(data)
+    await get().fetchImeiRecords()
+    return result
+  },
+
+  updateImeiRecord: async (id, data) => {
+    const result = await imeiApi.update(id, data)
+    await get().fetchImeiRecords()
+    return result
+  },
+
+  markImeiMotherboard: async (id, notes) => {
+    const result = await imeiApi.markMotherboard(id, notes)
+    await get().fetchImeiRecords()
+    return result
+  },
+
+  markImeiExchange: async (id, old_imei, new_imei, notes) => {
+    const result = await imeiApi.markExchange(id, old_imei, new_imei, notes)
+    await get().fetchImeiRecords()
+    return result
+  },
+
+  deleteImeiRecord: async (id) => {
+    await imeiApi.delete(id)
+    await get().fetchImeiRecords()
   },
 
   setError: (error) => set({ error }),

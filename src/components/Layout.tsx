@@ -7,6 +7,7 @@ import {
   CheckCircle,
   Package,
   Smartphone,
+  Search,
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
@@ -24,6 +25,7 @@ const menuItems: MenuItem[] = [
   { path: '/repairs/ready', label: '待取机', icon: PackageCheck },
   { path: '/repairs/completed', label: '已完成', icon: CheckCircle },
   { path: '/inventory', label: '库存管理', icon: Package },
+  { path: '/imei', label: '串号管理', icon: Search },
 ]
 
 export default function Layout() {

@@ -16,6 +16,7 @@ import authRoutes from './routes/auth.js'
 import repairRoutes from './routes/repairs.js'
 import partRoutes from './routes/parts.js'
 import repairItemRoutes from './routes/repair_items.js'
+import imeiRoutes from './routes/imei.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -40,6 +41,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/repairs', repairRoutes)
 app.use('/api/parts', partRoutes)
 app.use('/api/repair-items', repairItemRoutes)
+app.use('/api/imei', imeiRoutes)
 
 /**
  * health

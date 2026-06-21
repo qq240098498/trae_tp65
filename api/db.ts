@@ -169,6 +169,32 @@ export function initDatabase() {
     })
   }
 
+  const createImeiRecords = `
+    CREATE TABLE IF NOT EXISTS imei_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      imei TEXT NOT NULL,
+      brand TEXT NOT NULL,
+      model TEXT NOT NULL,
+      repair_id INTEGER,
+      is_motherboard_repaired INTEGER DEFAULT 0 CHECK (is_motherboard_repaired IN (0, 1)),
+      is_device_exchanged INTEGER DEFAULT 0 CHECK (is_device_exchanged IN (0, 1)),
+      old_imei TEXT,
+      new_imei TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (repair_id) REFERENCES repairs(id) ON DELETE SET NULL
+    )
+  `
+  db.exec(createImeiRecords)
+
+  const createImeiIndex = `
+    CREATE INDEX IF NOT EXISTS idx_imei_records_imei ON imei_records(imei)
+  `
+  db.exec(createImeiIndex)
+
+  // IMEI table and index created
+
   const defaultParts = [
     { type: 'screen', brand: 'Apple', model: 'iPhone 13', color: '黑色', capacity: null, version: 'original', safety_stock: 3, name: 'iPhone 13 黑色屏幕总成 (原装)', sku: 'SCR-IP13-BLK-ORG', stock: 5, price: 600, cost: 450 },
     { type: 'screen', brand: 'Apple', model: 'iPhone 13', color: '黑色', capacity: null, version: 'high_copy', safety_stock: 3, name: 'iPhone 13 黑色屏幕总成 (高仿)', sku: 'SCR-IP13-BLK-CPY', stock: 2, price: 350, cost: 200 },
