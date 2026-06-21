@@ -3,6 +3,69 @@ import { db } from '../db.js'
 
 const router = Router()
 
+interface PartRow {
+  id: number
+  type: string
+  brand: string
+  model: string
+  color: string | null
+  capacity: string | null
+  version: string
+  stock: number
+}
+
+function findDuplicatePart(
+  type: string,
+  brand: string,
+  model: string,
+  version: string,
+  color: string | null,
+  capacity: string | null,
+  excludeId?: number
+): PartRow | undefined {
+  let sql = `SELECT * FROM parts WHERE type = ? AND LOWER(TRIM(brand)) = LOWER(TRIM(?)) AND LOWER(TRIM(model)) = LOWER(TRIM(?)) AND version = ?`
+  const params: (string | number)[] = [type, brand, model, version]
+
+  if (type === 'screen') {
+    if (color) {
+      sql += ` AND LOWER(TRIM(COALESCE(color, ''))) = LOWER(TRIM(?))`
+      params.push(color)
+    } else {
+      sql += ` AND (color IS NULL OR TRIM(color) = '')`
+    }
+  } else if (type === 'battery') {
+    if (capacity) {
+      sql += ` AND LOWER(TRIM(COALESCE(capacity, ''))) = LOWER(TRIM(?))`
+      params.push(capacity)
+    } else {
+      sql += ` AND (capacity IS NULL OR TRIM(capacity) = '')`
+    }
+  }
+
+  if (excludeId !== undefined) {
+    sql += ` AND id != ?`
+    params.push(excludeId)
+  }
+
+  sql += ` LIMIT 1`
+  return db.prepare(sql).get(...params) as PartRow | undefined
+}
+
+function buildDuplicateMessage(existing: PartRow): string {
+  const versionLabels: Record<string, string> = {
+    original: '原装',
+    high_copy: '高仿',
+    after_press: '后压',
+  }
+  const spec =
+    existing.type === 'screen'
+      ? existing.color || ''
+      : existing.type === 'battery'
+        ? existing.capacity || ''
+        : ''
+  return `该规格已存在（库存 ${existing.stock} 件）：${existing.brand} ${existing.model} ${versionLabels[existing.version] || existing.version}${spec ? ' · ' + spec : ''}，请直接对该配件进行入库或编辑。`
+}
+
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const { type, brand, model, keyword } = req.query
@@ -146,6 +209,34 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const { type, brand, model, color, capacity, version, safety_stock, name, sku, stock, price, cost } = req.body
+
+    const duplicate = findDuplicatePart(
+      type,
+      brand,
+      model,
+      version || 'original',
+      color || null,
+      capacity || null
+    )
+    if (duplicate) {
+      res.status(409).json({
+        success: false,
+        error: buildDuplicateMessage(duplicate),
+      })
+      return
+    }
+
+    const existingSku = db
+      .prepare('SELECT id FROM parts WHERE LOWER(TRIM(sku)) = LOWER(TRIM(?))')
+      .get(sku)
+    if (existingSku) {
+      res.status(409).json({
+        success: false,
+        error: `SKU "${sku}" 已存在，请更换。`,
+      })
+      return
+    }
+
     const info = db
       .prepare(
         'INSERT INTO parts (type, brand, model, color, capacity, version, safety_stock, name, sku, stock, price, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -193,7 +284,46 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 
 router.put('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
+    const partId = Number(req.params.id)
     const { type, brand, model, color, capacity, version, safety_stock, name, sku, stock, price, cost } = req.body
+
+    const existing = db.prepare('SELECT id FROM parts WHERE id = ?').get(partId) as { id: number } | undefined
+    if (!existing) {
+      res.status(404).json({
+        success: false,
+        error: '配件不存在',
+      })
+      return
+    }
+
+    const duplicate = findDuplicatePart(
+      type,
+      brand,
+      model,
+      version || 'original',
+      color || null,
+      capacity || null,
+      partId
+    )
+    if (duplicate) {
+      res.status(409).json({
+        success: false,
+        error: buildDuplicateMessage(duplicate),
+      })
+      return
+    }
+
+    const existingSku = db
+      .prepare('SELECT id FROM parts WHERE LOWER(TRIM(sku)) = LOWER(TRIM(?)) AND id != ?')
+      .get(sku, partId)
+    if (existingSku) {
+      res.status(409).json({
+        success: false,
+        error: `SKU "${sku}" 已存在，请更换。`,
+      })
+      return
+    }
+
     const info = db
       .prepare(
         'UPDATE parts SET type = ?, brand = ?, model = ?, color = ?, capacity = ?, version = ?, safety_stock = ?, name = ?, sku = ?, stock = ?, price = ?, cost = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
@@ -211,7 +341,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
         stock || 0,
         price || 0,
         cost || 0,
-        req.params.id
+        partId
       )
 
     if (info.changes === 0) {

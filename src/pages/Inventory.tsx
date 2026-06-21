@@ -119,6 +119,41 @@ function isLowStock(part: Part) {
   return part.safety_stock > 0 && part.stock < part.safety_stock
 }
 
+interface PartSpec {
+  type: Part['type']
+  brand: string
+  model: string
+  version: PartVersion
+  color: string | null
+  capacity: string | null
+}
+
+function normalize(value: string | null | undefined) {
+  return (value || '').trim().toLowerCase()
+}
+
+function isSameSpecPart(a: PartSpec, b: PartSpec) {
+  if (a.type !== b.type) return false
+  if (normalize(a.brand) !== normalize(b.brand)) return false
+  if (normalize(a.model) !== normalize(b.model)) return false
+  if (a.version !== b.version) return false
+  if (a.type === 'screen') {
+    return normalize(a.color) === normalize(b.color)
+  }
+  if (a.type === 'battery') {
+    return normalize(a.capacity) === normalize(b.capacity)
+  }
+  return true
+}
+
+function findDuplicatePart(
+  parts: Part[],
+  spec: PartSpec,
+  excludeId?: number
+): Part | undefined {
+  return parts.find((p) => p.id !== excludeId && isSameSpecPart(p, spec))
+}
+
 function VersionBadge({ version }: { version: PartVersion }) {
   return (
     <span
@@ -388,6 +423,22 @@ export default function Inventory() {
         cost: partForm.cost,
       }
 
+      const duplicate = findDuplicatePart(parts, data, editingPart?.id)
+      if (duplicate) {
+        const specText =
+          data.type === 'screen'
+            ? data.color || ''
+            : data.type === 'battery'
+              ? data.capacity || ''
+              : ''
+        window.alert(
+          `该规格已存在，无法重复录入：\n${duplicate.brand} ${duplicate.model} ` +
+            `${partVersionLabels[duplicate.version]}${specText ? ' · ' + specText : ''}\n` +
+            `现有库存 ${duplicate.stock} 件，请直接对该配件进行入库或编辑。`
+        )
+        return
+      }
+
       if (editingPart) {
         await updatePart(editingPart.id, data)
       } else {
@@ -398,6 +449,8 @@ export default function Inventory() {
       setEditingPart(null)
     } catch (error) {
       console.error('保存失败:', error)
+      const message = error instanceof Error ? error.message : '保存失败'
+      window.alert(message)
     }
   }
 
