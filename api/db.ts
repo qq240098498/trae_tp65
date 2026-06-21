@@ -72,6 +72,8 @@ export function initDatabase() {
       model TEXT NOT NULL,
       color TEXT,
       capacity TEXT,
+      version TEXT DEFAULT 'original' CHECK (version IN ('original', 'high_copy', 'after_press')),
+      safety_stock INTEGER DEFAULT 0,
       name TEXT NOT NULL,
       sku TEXT UNIQUE NOT NULL,
       stock INTEGER DEFAULT 0,
@@ -82,6 +84,18 @@ export function initDatabase() {
     )
   `
   db.exec(createParts)
+
+  const partColumns = db.prepare('PRAGMA table_info(parts)').all() as { name: string }[]
+  const partColumnNames = partColumns.map((c) => c.name)
+  if (!partColumnNames.includes('version')) {
+    db.exec("ALTER TABLE parts ADD COLUMN version TEXT DEFAULT 'original'")
+  }
+  if (!partColumnNames.includes('safety_stock')) {
+    db.exec('ALTER TABLE parts ADD COLUMN safety_stock INTEGER DEFAULT 0')
+    db.exec("UPDATE parts SET safety_stock = 3 WHERE type = 'screen'")
+    db.exec("UPDATE parts SET safety_stock = 5 WHERE type = 'battery'")
+    db.exec("UPDATE parts SET safety_stock = 2 WHERE type = 'other'")
+  }
 
   const createRepairParts = `
     CREATE TABLE IF NOT EXISTS repair_parts (
@@ -156,25 +170,26 @@ export function initDatabase() {
   }
 
   const defaultParts = [
-    { type: 'screen', brand: 'Apple', model: 'iPhone 13', color: '黑色', capacity: null, name: 'iPhone 13 黑色屏幕总成', sku: 'SCR-IP13-BLK', stock: 5, price: 600, cost: 450 },
-    { type: 'screen', brand: 'Apple', model: 'iPhone 13', color: '白色', capacity: null, name: 'iPhone 13 白色屏幕总成', sku: 'SCR-IP13-WHT', stock: 3, price: 600, cost: 450 },
-    { type: 'screen', brand: 'Apple', model: 'iPhone 14', color: '黑色', capacity: null, name: 'iPhone 14 黑色屏幕总成', sku: 'SCR-IP14-BLK', stock: 4, price: 800, cost: 600 },
-    { type: 'screen', brand: 'Huawei', model: 'Mate 40 Pro', color: '黑色', capacity: null, name: 'Mate 40 Pro 黑色屏幕总成', sku: 'SCR-M40P-BLK', stock: 2, price: 700, cost: 520 },
-    { type: 'screen', brand: 'Xiaomi', model: 'Mi 12', color: '黑色', capacity: null, name: 'Mi 12 黑色屏幕总成', sku: 'SCR-MI12-BLK', stock: 6, price: 450, cost: 330 },
-    { type: 'battery', brand: 'Apple', model: 'iPhone 13', color: null, capacity: '3227mAh', name: 'iPhone 13 电池 (3227mAh)', sku: 'BAT-IP13-3227', stock: 10, price: 180, cost: 120 },
-    { type: 'battery', brand: 'Apple', model: 'iPhone 14', color: null, capacity: '3279mAh', name: 'iPhone 14 电池 (3279mAh)', sku: 'BAT-IP14-3279', stock: 8, price: 200, cost: 140 },
-    { type: 'battery', brand: 'Huawei', model: 'Mate 40 Pro', color: null, capacity: '4400mAh', name: 'Mate 40 Pro 电池 (4400mAh)', sku: 'BAT-M40P-4400', stock: 5, price: 150, cost: 100 },
-    { type: 'battery', brand: 'Xiaomi', model: 'Mi 12', color: null, capacity: '4500mAh', name: 'Mi 12 电池 (4500mAh)', sku: 'BAT-MI12-4500', stock: 7, price: 130, cost: 85 },
+    { type: 'screen', brand: 'Apple', model: 'iPhone 13', color: '黑色', capacity: null, version: 'original', safety_stock: 3, name: 'iPhone 13 黑色屏幕总成 (原装)', sku: 'SCR-IP13-BLK-ORG', stock: 5, price: 600, cost: 450 },
+    { type: 'screen', brand: 'Apple', model: 'iPhone 13', color: '黑色', capacity: null, version: 'high_copy', safety_stock: 3, name: 'iPhone 13 黑色屏幕总成 (高仿)', sku: 'SCR-IP13-BLK-CPY', stock: 2, price: 350, cost: 200 },
+    { type: 'screen', brand: 'Apple', model: 'iPhone 13', color: '白色', capacity: null, version: 'original', safety_stock: 3, name: 'iPhone 13 白色屏幕总成 (原装)', sku: 'SCR-IP13-WHT-ORG', stock: 3, price: 600, cost: 450 },
+    { type: 'screen', brand: 'Apple', model: 'iPhone 14', color: '黑色', capacity: null, version: 'after_press', safety_stock: 3, name: 'iPhone 14 黑色屏幕总成 (后压)', sku: 'SCR-IP14-BLK-RFB', stock: 1, price: 500, cost: 300 },
+    { type: 'screen', brand: 'Huawei', model: 'Mate 40 Pro', color: '黑色', capacity: null, version: 'original', safety_stock: 3, name: 'Mate 40 Pro 黑色屏幕总成 (原装)', sku: 'SCR-M40P-BLK-ORG', stock: 2, price: 700, cost: 520 },
+    { type: 'screen', brand: 'Xiaomi', model: 'Mi 12', color: '黑色', capacity: null, version: 'high_copy', safety_stock: 3, name: 'Mi 12 黑色屏幕总成 (高仿)', sku: 'SCR-MI12-BLK-CPY', stock: 6, price: 280, cost: 160 },
+    { type: 'battery', brand: 'Apple', model: 'iPhone 13', color: null, capacity: '3227mAh', version: 'original', safety_stock: 5, name: 'iPhone 13 电池 (3227mAh 原装)', sku: 'BAT-IP13-3227-ORG', stock: 10, price: 180, cost: 120 },
+    { type: 'battery', brand: 'Apple', model: 'iPhone 14', color: null, capacity: '3279mAh', version: 'high_copy', safety_stock: 5, name: 'iPhone 14 电池 (3279mAh 高仿)', sku: 'BAT-IP14-3279-CPY', stock: 4, price: 90, cost: 50 },
+    { type: 'battery', brand: 'Huawei', model: 'Mate 40 Pro', color: null, capacity: '4400mAh', version: 'original', safety_stock: 5, name: 'Mate 40 Pro 电池 (4400mAh 原装)', sku: 'BAT-M40P-4400-ORG', stock: 5, price: 150, cost: 100 },
+    { type: 'battery', brand: 'Xiaomi', model: 'Mi 12', color: null, capacity: '4500mAh', version: 'original', safety_stock: 5, name: 'Mi 12 电池 (4500mAh 原装)', sku: 'BAT-MI12-4500-ORG', stock: 7, price: 130, cost: 85 },
   ]
 
   const checkParts = db.prepare('SELECT COUNT(*) as count FROM parts')
   const partsResult = checkParts.get() as { count: number }
   if (partsResult.count === 0) {
     const insertPart = db.prepare(
-      'INSERT INTO parts (type, brand, model, color, capacity, name, sku, stock, price, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO parts (type, brand, model, color, capacity, version, safety_stock, name, sku, stock, price, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
     defaultParts.forEach((p) => {
-      insertPart.run(p.type, p.brand, p.model, p.color, p.capacity, p.name, p.sku, p.stock, p.price, p.cost)
+      insertPart.run(p.type, p.brand, p.model, p.color, p.capacity, p.version, p.safety_stock, p.name, p.sku, p.stock, p.price, p.cost)
     })
   }
 }

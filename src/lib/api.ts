@@ -110,6 +110,8 @@ export const partApi = {
 
   get: (id: number) => request<Part>(`/parts/${id}`),
 
+  getLowStock: () => request<Part[]>('/parts/low-stock'),
+
   create: (data: Omit<Part, 'id' | 'created_at' | 'updated_at'>) =>
     request<Part>('/parts', {
       method: 'POST',

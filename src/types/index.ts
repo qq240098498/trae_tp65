@@ -29,6 +29,20 @@ export interface RepairItem {
   description: string
 }
 
+export type PartVersion = 'original' | 'high_copy' | 'after_press'
+
+export const partVersionLabels: Record<PartVersion, string> = {
+  original: '原装',
+  high_copy: '高仿',
+  after_press: '后压',
+}
+
+export const partVersionColors: Record<PartVersion, string> = {
+  original: 'bg-green-100 text-green-800',
+  high_copy: 'bg-orange-100 text-orange-800',
+  after_press: 'bg-blue-100 text-blue-800',
+}
+
 export interface Part {
   id: number
   type: 'screen' | 'battery' | 'other'
@@ -36,6 +50,8 @@ export interface Part {
   model: string
   color: string | null
   capacity: string | null
+  version: PartVersion
+  safety_stock: number
   name: string
   sku: string
   stock: number
@@ -68,6 +84,7 @@ export interface RepairPart {
   model?: string
   color?: string | null
   capacity?: string | null
+  version?: string
 }
 
 export interface RepairPhoto {

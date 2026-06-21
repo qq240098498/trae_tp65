@@ -111,7 +111,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     `).all(req.params.id)
 
     const parts = db.prepare(`
-      SELECT rp.*, p.name, p.sku, p.type, p.brand, p.model, p.color, p.capacity
+      SELECT rp.*, p.name, p.sku, p.type, p.brand, p.model, p.color, p.capacity, p.version
       FROM repair_parts rp
       JOIN parts p ON rp.part_id = p.id
       WHERE rp.repair_id = ?

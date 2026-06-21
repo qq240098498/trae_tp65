@@ -26,8 +26,28 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       params.push(`%${keyword}%`, `%${keyword}%`)
     }
 
-    sql += ' ORDER BY type, brand, model, color, capacity'
+    sql += ' ORDER BY type, brand, model, version, color, capacity'
     const parts = db.prepare(sql).all(...params)
+
+    res.json({
+      success: true,
+      data: parts,
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: (error as Error).message,
+    })
+  }
+})
+
+router.get('/low-stock', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parts = db
+      .prepare(
+        "SELECT * FROM parts WHERE safety_stock > 0 AND stock < safety_stock ORDER BY (safety_stock - stock) DESC, type, brand, model"
+      )
+      .all()
 
     res.json({
       success: true,
@@ -56,7 +76,7 @@ router.get('/screens', async (req: Request, res: Response): Promise<void> => {
       params.push(model as string)
     }
 
-    sql += ' ORDER BY brand, model, color'
+    sql += ' ORDER BY brand, model, version, color'
     const parts = db.prepare(sql).all(...params)
 
     res.json({
@@ -86,7 +106,7 @@ router.get('/batteries', async (req: Request, res: Response): Promise<void> => {
       params.push(model as string)
     }
 
-    sql += ' ORDER BY brand, model, capacity'
+    sql += ' ORDER BY brand, model, version, capacity'
     const parts = db.prepare(sql).all(...params)
 
     res.json({
@@ -125,10 +145,10 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { type, brand, model, color, capacity, name, sku, stock, price, cost } = req.body
+    const { type, brand, model, color, capacity, version, safety_stock, name, sku, stock, price, cost } = req.body
     const info = db
       .prepare(
-        'INSERT INTO parts (type, brand, model, color, capacity, name, sku, stock, price, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO parts (type, brand, model, color, capacity, version, safety_stock, name, sku, stock, price, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
       .run(
         type,
@@ -136,6 +156,8 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         model,
         color || null,
         capacity || null,
+        version || 'original',
+        safety_stock ?? 0,
         name,
         sku,
         stock || 0,
@@ -152,6 +174,8 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         model,
         color,
         capacity,
+        version: version || 'original',
+        safety_stock: safety_stock ?? 0,
         name,
         sku,
         stock,
@@ -169,10 +193,10 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 
 router.put('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { type, brand, model, color, capacity, name, sku, stock, price, cost } = req.body
+    const { type, brand, model, color, capacity, version, safety_stock, name, sku, stock, price, cost } = req.body
     const info = db
       .prepare(
-        'UPDATE parts SET type = ?, brand = ?, model = ?, color = ?, capacity = ?, name = ?, sku = ?, stock = ?, price = ?, cost = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        'UPDATE parts SET type = ?, brand = ?, model = ?, color = ?, capacity = ?, version = ?, safety_stock = ?, name = ?, sku = ?, stock = ?, price = ?, cost = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
       )
       .run(
         type,
@@ -180,6 +204,8 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
         model,
         color || null,
         capacity || null,
+        version || 'original',
+        safety_stock ?? 0,
         name,
         sku,
         stock || 0,
